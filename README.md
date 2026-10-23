@@ -20,7 +20,7 @@ Requires Node.js 22+.
 
 ```
 npm install
-cp .env.example .env
+cp env.example .env
 ```
 
 Fill in `.env`:
