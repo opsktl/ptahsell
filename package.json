@@ -4,8 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "sell": "node sell.js",
-    "book": "node sell.js --book"
+    "sell": "node sell.js sell",
+    "watch": "node sell.js watch",
+    "approve": "node sell.js approve",
+    "book": "node sell.js book"
   },
   "dependencies": {
     "ethers": "^6.13.4"

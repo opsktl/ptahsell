@@ -28,34 +28,36 @@ Fill in `.env`:
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PRIVATE_KEYS` | | Comma separated private keys of wallets holding relics |
-| `RPC_URL` | `https://bsc-dataseed.bnbchain.org` | BSC RPC endpoint (must support JSON-RPC batch requests) |
+| `RPC_URL` | `https://bsc-dataseed.bnbchain.org` | BSC HTTP RPC for reads and transactions (must support JSON-RPC batch requests) |
+| `WS_URL` | `wss://bsc-rpc.publicnode.com` | BSC WebSocket RPC for live events (`watch` mode) |
 | `MAX_GAP_USD` | `2` | Sell only into bids priced at most this far below the top bid |
 | `MIN_PRICE_USD` | `0` | Never sell below this price |
 | `MAX_PER_TX` | `30` | Max NFTs per `fill` transaction |
 | `GAS_PRICE_GWEI` | network | Fixed gas price |
 | `DRY_RUN` | `0` | `1` prints the plan without sending transactions |
-| `LOOP` | `0` | `1` keeps running and sells whenever relics or new bids appear |
-| `INTERVAL_MS` | `5000` | Delay between rounds in loop mode |
-| `REVOKE_AFTER` | `0` | `1` revokes the market approval after selling |
-| `ROUNDS` | `3` | Retry rounds in single run mode |
+| `REVOKE_AFTER` | `0` | `1` revokes the market approval after a one-shot `sell` |
+| `ROUNDS` | `3` | Retry rounds for one-shot `sell` |
+| `RESYNC_MS` | `60000` | How often `watch` re-reads the full book from storage |
 | `BATCH_SIZE` | `50` | Storage reads per RPC batch |
 | `CONCURRENCY` | `4` | Parallel RPC batches |
 
 ## Usage
 
 ```
-npm run book    # print the current relic bid book
-npm run sell    # sell
+npm run approve   # approve the market for all wallets in advance
+npm run book      # print the current relic bid book
+npm run sell      # sell everything once into the top bids
+npm run watch     # stay online and sell the moment a good bid or a new relic appears
 ```
 
 Run with `DRY_RUN=1` first to see which bids would be hit.
 
 ## How it works
 
-1. Reads open bids directly from the market contract storage and caches them in `.bids-cache.json`. The first scan reads every bid and can take a few minutes on a public RPC. Later runs only read new and still open bids.
-2. Loads relic token IDs for every wallet.
-3. Sends `setApprovalForAll(market, true)` on the relic contract if the wallet has not approved the market yet.
-4. Splits the tokens across the top bids, skipping bids placed by your own wallets, and calls `fill(bidId, tokenIds)`. Every fill is gas-estimated first, so bids already taken by someone else are skipped, then the book is re-read and the next round runs.
+1. On start every wallet is checked and `setApprovalForAll(market, true)` is sent where missing, so at sale time only `fill` transactions go out. `npm run approve` does just this step.
+2. Open bids are read directly from the market contract storage and cached in `.bids-cache.json`. The first scan reads every bid and can take a few minutes on a public RPC. Later runs only read new and still open bids.
+3. Tokens are split across the top bids, skipping bids placed by your own wallets, and sold with `fill(bidId, tokenIds)`. Transactions are sent with a precomputed gas limit and locally tracked nonces, without an estimate round trip.
+4. In `watch` mode the bot subscribes over WebSocket to market events (new bids, fills, cancels) and to relic transfers into or out of your wallets. A new top bid or newly received relics trigger a sale immediately. The full book is re-read every `RESYNC_MS` and after any failed fill. A dropped WebSocket is detected and reconnected automatically.
 
 Each wallet needs some BNB for gas (about 130k gas per single-NFT fill, plus a one-time approval).
 
